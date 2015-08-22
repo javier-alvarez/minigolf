@@ -33,7 +33,7 @@ type Arrow =
     member this.Rotate angleDegree = 
         GraphicsWindow.BrushColor <- Colors.Black
         GraphicsWindow.PenColor <- Colors.Black
-        this.Hide ()
+        this.Hide()
         let angleDegree = (this.Angle + angleDegree) % 360.<degree>
         let angle = convertToRadian angleDegree
         let xlength = abs (this.Line.X2 - this.Line.X1)
@@ -51,9 +51,9 @@ type Arrow =
           LineName = lineName
           Angle = angleDegree }
     
-    member this.Hide () = Shapes.HideShape this.LineName
-    member this.MoveLeft () = this.Rotate -1.<degree>
-    member this.MoveRight () = this.Rotate 1.<degree>
+    member this.Hide() = Shapes.HideShape this.LineName
+    member this.MoveLeft() = this.Rotate -1.<degree>
+    member this.MoveRight() = this.Rotate 1.<degree>
 
 type Direction = 
     | Left
@@ -65,13 +65,15 @@ type GameState =
     | ArrowMove of hole : string * ball : string * arrow : Arrow * direction : Direction
     | BallFire of hole : string * ball : string * arrow : Arrow * lastRendered : int
     | End
-    with override this.ToString() =
-        match this with 
+    override this.ToString() = 
+        match this with
         | Uninitialised -> "Uninitialised"
         | Started _ -> "Started"
         | ArrowMove _ -> "ArrowMove"
         | BallFire _ -> "BallFire"
         | End -> "End"
+
+let rnd = Random()
 
 let initGame() : GameState = 
     let sizeOfShapes = 16.
@@ -83,7 +85,7 @@ let initGame() : GameState =
         GraphicsWindow.BrushColor <- Colors.White
         GraphicsWindow.PenColor <- Colors.Black
         let ball = Shapes.AddEllipse(sizeOfShapes, sizeOfShapes)
-        Shapes.Move(ball, GraphicsWindow.Width / 2, (GraphicsWindow.Height / 4) * 3)
+        Shapes.Move(ball, rnd.Next(GraphicsWindow.Width - 1), (GraphicsWindow.Height / 4) * 3)
         ball
     
     // Arrow
@@ -91,7 +93,7 @@ let initGame() : GameState =
         GraphicsWindow.BrushColor <- Colors.Black
         GraphicsWindow.PenColor <- Colors.Black
         let xball = Shapes.GetLeft(ball) + sizeOfShapes / 2.
-        let yball = Shapes.GetTop(ball)
+        let yball = Shapes.GetTop(ball) + sizeOfShapes / 2.
         let ylineEnd = yball - 50.
         
         let line = 
@@ -131,7 +133,7 @@ let AnimateBallMove(hole, ball, arrow, datetime) : GameState =
     let ynew = y + (vy * 150.) * deltaTime / 1000.
     System.Diagnostics.Debug.WriteLine(sprintf "x:%A y:%A" xnew ynew)
     Shapes.Move(ball, xnew, ynew)
-    BallFire(hole, ball, arrow, int(Clock.ElapsedMilliseconds))
+    BallFire(hole, ball, arrow, int (Clock.ElapsedMilliseconds))
 
 let mutable gameState = Uninitialised
 
@@ -150,16 +152,32 @@ let OnKeyDown() =
 
 GraphicsWindow.KeyDown <- Callback(OnKeyDown)
 
-let endGame ball = 
-    let x = Shapes.GetLeft(ball)
-    let y = Shapes.GetTop(ball)
-    match x, y with
-    | x, _ when x < 0. || x > (float GraphicsWindow.Width) -> true
-    | _, y when y < 0. || y > (float GraphicsWindow.Height) -> true
-    | _ -> false
+type GameResult = 
+    | Win
+    | Lose
+    | Continue
+
+let endGame ball hole = 
+    let didLose = 
+        let x = Shapes.GetLeft(ball)
+        let y = Shapes.GetTop(ball)
+        match x, y with
+        | x, _ when x < 0. || x > (float GraphicsWindow.Width) -> true
+        | _, y when y < 0. || y > (float GraphicsWindow.Height) -> true
+        | _ -> false
+    
+    let didWin = 
+        let xdelta = Shapes.GetLeft(hole) - Shapes.GetLeft(ball) |> abs
+        let ydelta = Shapes.GetTop(hole) - Shapes.GetTop(ball) |> abs
+        xdelta < 5. && ydelta < 5.
+    
+    if didLose then Lose
+    else if didWin then Win
+    else Continue
 
 let mutable started = false
 let mutable counter = 0
+
 // Main loop
 GraphicsWindow.Update <- fun () -> 
     counter <- counter + 1
@@ -167,22 +185,31 @@ GraphicsWindow.Update <- fun () ->
     | Uninitialised -> 
         System.Diagnostics.Debug.WriteLine(sprintf "%A %A %d" Clock.ElapsedMilliseconds gameState counter)
         gameState <- initGame()
-    | Started(hole, ball, arrow) ->
-        if not started then
-            started <- true 
+    | Started(hole, ball, arrow) -> 
+        if not started then 
+            started <- true
             System.Diagnostics.Debug.WriteLine("Started")
     | ArrowMove(hole, ball, arrow, Left) -> 
+        GraphicsWindow.Title <- ""
         System.Diagnostics.Debug.WriteLine("ArrowMove Left")
-        let arrow = arrow.MoveLeft ()
+        let arrow = arrow.MoveLeft()
         gameState <- Started(hole, ball, arrow)
     | ArrowMove(hole, ball, arrow, Right) -> 
+        GraphicsWindow.Title <- ""
         System.Diagnostics.Debug.WriteLine("ArrowMove Right")
-        let arrow = arrow.MoveRight ()
+        let arrow = arrow.MoveRight()
         gameState <- Started(hole, ball, arrow)
-    | BallFire(hole, ball, arrow, lastTime) ->
+    | BallFire(hole, ball, arrow, lastTime) -> 
+        GraphicsWindow.Title <- ""
         System.Diagnostics.Debug.WriteLine("BallFire")
-        if endGame ball then gameState <- End
-        else 
+        match endGame ball hole with
+        | Win -> 
+            GraphicsWindow.Title <- "Winner Congrats"
+            gameState <- End
+        | Lose -> 
+            GraphicsWindow.Title <- "Loser play again"
+            gameState <- End
+        | Continue -> 
             arrow.Hide()
             gameState <- AnimateBallMove(hole, ball, arrow, lastTime)
     | End -> gameState <- initGame()
